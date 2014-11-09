@@ -1,0 +1,34 @@
+---
+title: "Core Microbiome"
+author: "David Elliott"
+output: html_document
+---
+
+
+```{r}
+library("phyloseq")
+
+# Kalahari bacteria
+biom <- import_biom("data/kb/otu_table.biom",taxaPrefix="X")
+map <- import_qiime_sample_data(mapfilename="data/kb/map.txt")
+kb <- merge_phyloseq(biom, map)
+
+
+### Holme Moss bacteria
+biom <- import_biom("data/hb/otu_table.biom",taxaPrefix="X")
+map <- import_qiime_sample_data(mapfilename="data/hb/map.txt")
+tax <- read.delim("data/hb/tax.txt")
+hb <- merge_phyloseq(biom, map, tax)
+
+
+### Holme Moss fungi
+biom <- import_biom("data/hf/otu_table.biom",taxaPrefix="X")
+map <- import_qiime_sample_data(mapfilename="data/hf/map.txt")
+tax <- read.delim("data/hf/tax.txt")
+hf <- merge_phyloseq(biom, map, tax)
+
+kb
+hb
+hf
+```
+
