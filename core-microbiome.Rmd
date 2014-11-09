@@ -4,8 +4,8 @@ author: "David Elliott"
 output: html_document
 ---
 
+```{r functions, echo=FALSE}
 
-```{r}
 library("phyloseq")
 
 tidy_phyloseq <- function(my_phyloseq){
@@ -17,6 +17,57 @@ tidy_phyloseq <- function(my_phyloseq){
   tax_table(my_phyloseq)[tax_table(my_phyloseq)[,"Phylum"]==NA,"Phylum"] <- "Unidentified"
   return(my_phyloseq)
 }
+
+# core microbiome function
+# finds the core microbiome with various options
+# physeq: the phyloseq object to query
+# threshold: the abundance below which OTUs are not regarded as being "core taxa"
+# method: "max" or "mean" - define whether to calculate the threshold for the max or mean
+# ranks: vector of taxonomic ranks at which to search for the core taxa
+
+# Note.
+# max and mean are calculated for the whole OTU table per row
+# therefore
+# mean gives the overall abundant OTUs
+# max will include any OTU which is abundant any 1 sample, so it is really like a sample-wise search
+
+# Defaults are set to model the typical scenario where simple abundance across the whole
+# experiment are used to identify numerically dominant OTUs
+# returns a list of OTUs
+core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species")){
+  core_otus_glom <- c()
+  for (rank in ranks) {
+    # agglomerate to the taxonomic rank being searched
+    # but only do this if we are not at the bottom rank already
+    if(rank!=rank_names(physeq)[length(rank_names(physeq))]) {
+      physeq.glom <- tax_glom(physeq,rank)
+    } else {
+      physeq.glom <- physeq
+    }
+    # get the OTU table into a dataframe
+    glom_otus <- as.data.frame(otu_table(physeq.glom))
+    # calculate the test statistic for each OTU
+    glom_otus$stat <- apply(glom_otus,1,method)
+    # make a list of the taxa meeting the abundance criteria
+    glom_rank_candidates <- row.names(glom_otus[glom_otus$stat >= threshold,])
+    # identify the taxonomy of the candidates
+    glom_rank_taxonomy <- tax_table(physeq.glom)[glom_rank_candidates,rank]
+    # identify the most abundant OTU within the identified taxonomic group, and add it to the list
+    # tax_glom does not always pick the most abundant OTU in the classification
+    # Therefore need to specifically check for the most abundant OTU 
+    for (candidate in glom_rank_taxonomy) {
+      OTUs_in_taxonomic_group <- tax_table(physeq)[,rank] == as.character(candidate)
+      most_abundant_OTU <- names(which.max(taxa_sums(physeq)[as.vector(OTUs_in_taxonomic_group)]))
+      core_otus_glom <- c(core_otus_glom,most_abundant_OTU)
+    }
+  }
+  return(unique(core_otus_glom))
+}
+
+```
+
+Import data
+```{r load_date,echo=FALSE}
 
 # Kalahari bacteria
 biom <- import_biom("data/kb/otu_table.biom",taxaPrefix="X")
@@ -46,10 +97,6 @@ tax = tax_table(taxonomy)
 hf <- merge_phyloseq(biom, map, tax)
 hf <- tidy_phyloseq(hf)
 
-kb
-hb
-hf
-
 # convert OTU observations into relative abundance per sample
 kb.rel <- transform_sample_counts(kb, function(x) 100*x/(sum(x)))
 hb.rel <- transform_sample_counts(hb, function(x) 100*x/(sum(x)))
@@ -59,49 +106,9 @@ hf.rel <- transform_sample_counts(hf, function(x) 100*x/(sum(x)))
 
 
 ```{r core_OTU_list}
-# finding the core OTUs 
-expt <- kb.rel
-
-# get the OTU table into a dataframe
-otus <- as.data.frame(otu_table(expt))
-# find mean and max occurrence for each OTU
-otus$max <- apply(otus,1,max)
-otus$mean <- apply(otus,1,mean)
-
-# Now identify the core microbiome at the OTU level
-# i.e. the way it is normally done
-
-# OTUs which are present at >= 2% in any sample (max method in section below)
-(core_otus_per_sample <- row.names(otus[otus$max >= 2,]) )
-# OTUs which are present at >= 2% in the whole study (mean method in section below)
-(core_otus_per_study <- row.names(otus[otus$mean >= 2,]) )
-
-# Now do same at any taxonomic rank - not the OTU clustering rank
-# tax_glom does not always pick the most abundant OTU in the classification
-# Therefore need to specifically check for the most abundant OTU 
-
-core_otus_glom <- c()
-rank <- "Phylum"
-method <- "mean" 
-for (rank in rank_names(expt)[2:6]) {
-  expt.glom <- tax_glom(expt,rank)
-  glom_otus <- as.data.frame(otu_table(expt.glom))
-  glom_otus$stat <- apply(glom_otus,1,method)
-  # make a list of the taxa meeting the abundance criteria
-  glom_rank_candidates <- row.names(glom_otus[glom_otus$stat >= 2,])
-  # identify the taxonomy of the candidates
-  glom_rank_taxonomy <- tax_table(expt.glom)[glom_rank_candidates,rank]
-  # identify the most abundant OTU within the identified taxonomic group, and add it to the list
-  for (candidate in glom_rank_taxonomy) {
-    OTUs_in_taxonomic_group <- tax_table(expt)[,rank] == as.character(candidate)
-    most_abundant_OTU <- names(which.max(taxa_sums(expt)[as.vector(OTUs_in_taxonomic_group)]))
-    core_otus_glom <- c(core_otus_glom,most_abundant_OTU)
-  }
-}
-(core_otus_glom <- unique(core_otus_glom) )
-
-# identify the core OTUs which were identified because of their contribution to a 
-# higher taxonomic rank:
-( core_extras <- core_otus_glom[!core_otus_glom%in%core_otus_per_study] )
+# Core OTUs by a typical OTU-level search of abundance across the whole experiment
+core_microbiome(kb.rel,threshold=0.1,method="mean",ranks=c("Species"))
+# Core OTUs by the same technique but repeated at all taxonomic ranks
+core_microbiome(kb.rel,threshold=0.1,method="mean",ranks=rank_names(kb.rel))
 
 ```
