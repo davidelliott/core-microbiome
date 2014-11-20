@@ -1,12 +1,11 @@
 ---
 title: "Core Microbiome"
-author: "David Elliott"
 output: html_document
 ---
 
 ```{r functions, echo=FALSE}
 
-library("phyloseq")
+library("phyloseq"); library("grid");
 
 tidy_phyloseq <- function(my_phyloseq){
   # set ranks. 
@@ -34,7 +33,7 @@ tidy_phyloseq <- function(my_phyloseq){
 # Defaults are set to model the typical scenario where simple abundance across the whole
 # experiment are used to identify numerically dominant OTUs
 # returns a list of OTUs
-core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),verbose=TRUE){
+core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),verbose=0){
   core_otus_glom <- c()
   for (rank in ranks) {
     # agglomerate to the taxonomic rank being searched
@@ -68,19 +67,17 @@ core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),
       core_otus_glom <- c(core_otus_glom,glom_rank_candidates)  
     }
     
-    if(verbose){
-      print(paste(rank,"level search found",length(glom_rank_candidates),"taxa above",method,"abundance of",threshold))
-      print(paste("Search found", length(core_otus_glom),"unique OTUs"))
-      }
+    if(verbose>1)  print(paste(rank,"level search found",length(glom_rank_candidates),"taxa above",method,"abundance of",threshold))
   }
+  if(verbose>0) print(paste("Search found", length(core_otus_glom),"unique OTUs"))
   return(unique(core_otus_glom))
 }
 
 # core compare function
-# Input 2 phyloseq objects
+# Input 2 phyloseq objects which have been pruned to contain a 'core microbiome'
 # returns nothing
-# prints a list of extra OTUs in the first object
-# Identifies extra taxa represented by those OTUs, which are not present in the second object
+# prints a list of extra OTUs in the first object, not present in the second
+# Identifies extra taxonomic groups represented by those OTUs, which are not present in the second object
 core_compare <- function(physeq1,physeq2) {
   # Find out which OTUs were added by the multi-rank approach
   extras <- tax_table(physeq1)[!rownames(otu_table(physeq1))%in%rownames(otu_table(physeq2))]
@@ -102,7 +99,7 @@ core_compare <- function(physeq1,physeq2) {
 
 ```
 
-Import data
+
 ```{r load_date,echo=FALSE}
 
 # Kalahari bacteria
@@ -141,37 +138,47 @@ hf.rel <- transform_sample_counts(hf, function(x) 100*x/(sum(x)))
 ```
 
 
-```{r core_OTU_list}
-expt <- kb.rel
-otus <- as.data.frame(otu_table(expt))
+```{r core_OTU, fig.width=18, fig.height=15}
 
-# Identify core OTUs using different options
-# then make a pruned phyloseq object for each list
-species_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=c("Species"))
-expt.species_mean <- prune_taxa(species_mean,expt)
+expts <- c(kb.rel , hb.rel , hf.rel)
+studies <- c("dryland bacteria" , "peatland bacteria" , "peatland fungi")
 
-all_ranks_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=rank_names(expt))
-expt.all_ranks_mean <- prune_taxa(all_ranks_mean,expt)
-
-species_max <- core_microbiome(expt,threshold=2,method="max",ranks=c("Species"))
-expt.species_max <- prune_taxa(species_max,expt)
-
-all_ranks_max <- core_microbiome(expt,threshold=2,method="max",ranks=rank_names(expt))
-expt.all_ranks_max <- prune_taxa(all_ranks_max,expt)
-
-# Examine the differently defined core microbiomes
-expt_list <- c(expt.species_mean,expt.all_ranks_mean,expt.species_max,expt.all_ranks_max)
-expt_names <- c("species mean", "all ranks mean", "species max", "all ranks max")
-n <- 1
-for(this_expt in  expt_list) {
-    plot_title <- paste(expt_names[n],"-",ntaxa(this_expt),"otus")
-    print(plot_bar(this_expt, fill="Phylum",title=plot_title))
-    expt_names[1]
-    n <- n+1
+for ( i in 1:length(expts) ) {
+  expt <- expts[[i]]
+  study <- studies[i]
+  print(study)
+  otus <- as.data.frame(otu_table(expt))
+  
+  # Identify core OTUs using different options
+  # then make a pruned phyloseq object for each list
+  species_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=c("Species"))
+  expt.species_mean <- prune_taxa(species_mean,expt)
+  all_ranks_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=rank_names(expt))
+  expt.all_ranks_mean <- prune_taxa(all_ranks_mean,expt)
+  species_max <- core_microbiome(expt,threshold=2,method="max",ranks=c("Species"))
+  expt.species_max <- prune_taxa(species_max,expt)
+  all_ranks_max <- core_microbiome(expt,threshold=2,method="max",ranks=rank_names(expt))
+  expt.all_ranks_max <- prune_taxa(all_ranks_max,expt)
+  
+  # Examine the differently defined core microbiomes
+  expt_list <- c(expt.species_mean,expt.all_ranks_mean,expt.species_max,expt.all_ranks_max)
+  expt_names <- c("species mean", "all ranks mean", "species max", "all ranks max")
+  n <- 1
+  r <- c(1,1,2,2)
+  c <- c(1,2,1,2)
+  grid.newpage()
+  pushViewport(viewport(layout = grid.layout(2,2)))
+  
+  for(this_expt in  expt_list) {
+      plot_title <- paste(study,"-",expt_names[n],"-",ntaxa(this_expt),"otus")
+      print(plot_bar(this_expt, fill="Phylum",title=plot_title),vp=viewport(layout.pos.row = r[n], layout.pos.col = c[n]))
+      expt_names[1]
+      n <- n+1
+  }
+  
+  core_compare(expt.all_ranks_mean,expt.species_mean)
+  
+  core_compare(expt.all_ranks_max,expt.species_max)
 }
-
-core_compare(expt.all_ranks_mean,expt.species_mean)
-
-core_compare(expt.all_ranks_max,expt.species_max)
 
 ```
