@@ -76,6 +76,30 @@ core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),
   return(unique(core_otus_glom))
 }
 
+# core compare function
+# Input 2 phyloseq objects
+# returns nothing
+# prints a list of extra OTUs in the first object
+# Identifies extra taxa represented by those OTUs, which are not present in the second object
+core_compare <- function(physeq1,physeq2) {
+  # Find out which OTUs were added by the multi-rank approach
+  extras <- tax_table(physeq1)[!rownames(otu_table(physeq1))%in%rownames(otu_table(physeq2))]
+  cat(c("Extra OTUs: ", rownames(extras)))
+  cat("\nExtra taxa represented in first object\n")
+  # Find out which taxa are additionally represented by those OTUs
+  for(rank in rank_names(physeq1)) {
+    cat(rank)
+    index <- !extras[,rank]%in%unique(tax_table(physeq2)[,rank])
+    if(sum(index)) {
+      cat(c("\n",unique(as.vector(extras[index,rank])),"\n"))
+    }
+    else {
+      cat(c("\n","none","\n"))
+    }
+  }
+}
+
+
 ```
 
 Import data
@@ -145,5 +169,9 @@ for(this_expt in  expt_list) {
     expt_names[1]
     n <- n+1
 }
+
+core_compare(expt.all_ranks_mean,expt.species_mean)
+
+core_compare(expt.all_ranks_max,expt.species_max)
 
 ```
