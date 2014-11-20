@@ -34,7 +34,7 @@ tidy_phyloseq <- function(my_phyloseq){
 # Defaults are set to model the typical scenario where simple abundance across the whole
 # experiment are used to identify numerically dominant OTUs
 # returns a list of OTUs
-core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species")){
+core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),verbose=TRUE){
   core_otus_glom <- c()
   for (rank in ranks) {
     # agglomerate to the taxonomic rank being searched
@@ -55,11 +55,23 @@ core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"))
     # identify the most abundant OTU within the identified taxonomic group, and add it to the list
     # tax_glom does not always pick the most abundant OTU in the classification
     # Therefore need to specifically check for the most abundant OTU 
-    for (candidate in glom_rank_taxonomy) {
-      OTUs_in_taxonomic_group <- tax_table(physeq)[,rank] == as.character(candidate)
-      most_abundant_OTU <- names(which.max(taxa_sums(physeq)[as.vector(OTUs_in_taxonomic_group)]))
-      core_otus_glom <- c(core_otus_glom,most_abundant_OTU)
+    # should only do this if we are not working at the lowest rank in the phyloseq object
+    if(rank!=rank_names(physeq)[length(rank_names(physeq))]) {
+      for (candidate in glom_rank_taxonomy) {
+        OTUs_in_taxonomic_group <- tax_table(physeq)[,rank] == as.character(candidate)
+        most_abundant_OTU <- names(which.max(taxa_sums(physeq)[as.vector(OTUs_in_taxonomic_group)]))
+        core_otus_glom <- c(core_otus_glom,most_abundant_OTU)
+      }
+    } 
+    else {
+      # at OTU level we don't need to search for the most abundant one - we want them all
+      core_otus_glom <- c(core_otus_glom,glom_rank_candidates)  
     }
+    
+    if(verbose){
+      print(paste(rank,"level search found",length(glom_rank_candidates),"taxa above",method,"abundance of",threshold))
+      print(paste("Search found", length(core_otus_glom),"unique OTUs"))
+      }
   }
   return(unique(core_otus_glom))
 }
@@ -106,9 +118,32 @@ hf.rel <- transform_sample_counts(hf, function(x) 100*x/(sum(x)))
 
 
 ```{r core_OTU_list}
-# Core OTUs by a typical OTU-level search of abundance across the whole experiment
-core_microbiome(kb.rel,threshold=0.1,method="mean",ranks=c("Species"))
-# Core OTUs by the same technique but repeated at all taxonomic ranks
-core_microbiome(kb.rel,threshold=0.1,method="mean",ranks=rank_names(kb.rel))
+expt <- kb.rel
+otus <- as.data.frame(otu_table(expt))
+
+# Identify core OTUs using different options
+# then make a pruned phyloseq object for each list
+species_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=c("Species"))
+expt.species_mean <- prune_taxa(species_mean,expt)
+
+all_ranks_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=rank_names(expt))
+expt.all_ranks_mean <- prune_taxa(all_ranks_mean,expt)
+
+species_max <- core_microbiome(expt,threshold=2,method="max",ranks=c("Species"))
+expt.species_max <- prune_taxa(species_max,expt)
+
+all_ranks_max <- core_microbiome(expt,threshold=2,method="max",ranks=rank_names(expt))
+expt.all_ranks_max <- prune_taxa(all_ranks_max,expt)
+
+# Examine the differently defined core microbiomes
+expt_list <- c(expt.species_mean,expt.all_ranks_mean,expt.species_max,expt.all_ranks_max)
+expt_names <- c("species mean", "all ranks mean", "species max", "all ranks max")
+n <- 1
+for(this_expt in  expt_list) {
+    plot_title <- paste(expt_names[n],"-",ntaxa(this_expt),"otus")
+    print(plot_bar(this_expt, fill="Phylum",title=plot_title))
+    expt_names[1]
+    n <- n+1
+}
 
 ```
