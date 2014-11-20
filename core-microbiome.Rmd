@@ -75,27 +75,27 @@ core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),
 
 # core compare function
 # Input 2 phyloseq objects which have been pruned to contain a 'core microbiome'
-# returns nothing
-# prints a list of extra OTUs in the first object, not present in the second
-# Identifies extra taxonomic groups represented by those OTUs, which are not present in the second object
+# returns a list containing:
+# extra OTUs in the first object, not present in the second
+# extra taxonomic groups represented by those OTUs, which are not present in the second object
+
 core_compare <- function(physeq1,physeq2) {
+  out <- list()
   # Find out which OTUs were added by the multi-rank approach
   extras <- tax_table(physeq1)[!rownames(otu_table(physeq1))%in%rownames(otu_table(physeq2))]
-  cat(c("Extra OTUs: ", rownames(extras)))
-  cat("\nExtra taxa represented in first object\n")
+  out[["extra_otus"]] <- rownames(extras)
   # Find out which taxa are additionally represented by those OTUs
   for(rank in rank_names(physeq1)) {
-    cat(rank)
     index <- !extras[,rank]%in%unique(tax_table(physeq2)[,rank])
     if(sum(index)) {
-      cat(c("\n",unique(as.vector(extras[index,rank])),"\n"))
+      out[[rank]] <- unique(as.vector(extras[index,rank]))
     }
     else {
-      cat(c("\n","none","\n"))
+      out[rank] <- "none"
     }
   }
+  return(out)
 }
-
 
 ```
 
@@ -138,7 +138,7 @@ hf.rel <- transform_sample_counts(hf, function(x) 100*x/(sum(x)))
 ```
 
 
-```{r core_OTU, fig.width=18, fig.height=15}
+```{r core_OTU, fig.width=18, fig.height=15, results='asis'}
 
 expts <- c(kb.rel , hb.rel , hf.rel)
 studies <- c("dryland bacteria" , "peatland bacteria" , "peatland fungi")
@@ -146,7 +146,6 @@ studies <- c("dryland bacteria" , "peatland bacteria" , "peatland fungi")
 for ( i in 1:length(expts) ) {
   expt <- expts[[i]]
   study <- studies[i]
-  print(study)
   otus <- as.data.frame(otu_table(expt))
   
   # Identify core OTUs using different options
@@ -176,9 +175,12 @@ for ( i in 1:length(expts) ) {
       n <- n+1
   }
   
-  core_compare(expt.all_ranks_mean,expt.species_mean)
+  # Identify differences in OTU and taxa represented with each method
+  cat("<b>",study,"- mean method - extra OTUs and taxa represented:</b><br>")
+  print(core_compare(expt.all_ranks_mean,expt.species_mean))
   
-  core_compare(expt.all_ranks_max,expt.species_max)
+  cat("<b>",study,"- max method - extra OTUs and taxa represented:</b><br>")
+  print(core_compare(expt.all_ranks_max,expt.species_max))
 }
 
 ```
