@@ -3,19 +3,33 @@ title: "Core Microbiome"
 output: html_document
 ---
 
-```{r functions, echo=FALSE}
+Identifying a core microbiome is useful for simplifying microbiome, for example to facilitate description and analyses, or as a quality control measure rejecting rarer sequences. There is not a single established concept or method which defines the core microbiome (we do not suggest that there should be), but [Hu et al (2013)](http://dx.doi.org/10.1371/journal.pone.0056343) recently outlined some of the commonly used methods. These are most often based on OTU _detection_ in all samples or OTU detection in a certain percentage of samples. Detection based criteria are not very well suited to microbiome analyses where sequencing depth, and thus detection potential, varies between samples and studies. 
 
-library("phyloseq"); library("grid");
+## Abundance threshold
+An alternative method is to use an abundance threshold rather than presence or absence. This approach mostly avoids the problem of detection being affected by sequencing depth, because the detection threshold can be set much higher than 1 sequence per sample for typical thresholds, which are likely to be in the range of 0.1 - 5 % (estimate - need to check real examples in literature). When applying an abundance threshold to identify the 'core microbiome', it is important to consider whether the threshold is applied to the whole sequencing library, to specific experimental factors, or individually to every sample. This choice will make a big difference to the identified core OTUs:
 
-tidy_phyloseq <- function(my_phyloseq){
-  # set ranks. 
-  colnames(tax_table(my_phyloseq)) = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
-  # fix taxa names
-  tax_table(my_phyloseq)[,colnames(tax_table(my_phyloseq))] <- gsub(tax_table(my_phyloseq)[,colnames(tax_table(my_phyloseq))],pattern="[a-z]__",replacement="")
-  # If NA in phylum position of taxonomy table then change it to "Unidentified"
-  tax_table(my_phyloseq)[tax_table(my_phyloseq)[,"Phylum"]==NA,"Phylum"] <- "Unidentified"
-  return(my_phyloseq)
-}
+### Experiment-wide abundance threshold
+Identifies OTUs that are common overall, but may not pick up OTUs that are common only in a few samples
+
+### Sample-wise abundance threshold
+An OTU that is numerically dominant in one or few samples can be picked up, even if it's absence in most samples brings it's experiment-wide abundance below the threshold. This would seem a more sensible approach if the objective is to compare samples. A sample-wise approach has a strong chance of picking up less relevant OTUs which are abundant in single erroneous or contaminated samples.
+
+### Factor-wise abundance threshold
+Similar to the sample-wise approach, using a grouping factor requires that an OTU be reliably abundant in replicates, reducing the chance of unusual samples contributing OTUs that are abundant as a result of sample related problems.
+
+### Examples
+...
+
+## Inclusion of higher taxa
+Most core microbiome selections and quality control measures in the literature are performed at the OTU level; i.e. selecting and de-selecting the clustered de-replicated sequences based upon their abundance or presence. A 97 % similarity is commonly used in microbiome studies and is widely regarded to approximate species-level similarities, however this choice is not universal, and from a biological point of view it is arbitrary. Furthermore, depending upon the taxonomic group in question, the similarity level required to differentiate species varies considerably, therefore applying selection criteria only at the OTU level is not easy to justify. The great genetic diversity of microbes is reflected in a variety of life strategies. Selecting OTUs of interest only at a single similarity level fails to recognise this diversity, favouring representation of higher taxonomic groups which are represented by fewer OTUs. 
+
+In [Elliott et al (2014)](http://dx.doi.org/10.1007/s10531-014-0684-8) we characterised the bacteria of Kalahari Sand, in which both _Bacteroidetes_ and _Cyanobacteria_ phyla were found to be abundant. Whilst _Cyanobacteria_ were represented predominantly by a single OTU, over 50 relatively rare OTUs contributed to the _Bacteroidetes_ phylum abundance. Depending on specific thresholds used, in cases like this common higher taxonomic ranks can be excluded from OTU selections intended to facilitate microbiome analyses. For this reason we implemented a multi-rank approach to selecting core OTUs, using the [phylosq](http://joey711.github.io/phyloseq/) package for R. We suggest that this is a useful strategy to achieve better representation of numerically abundant taxa in microbiome analyses.
+
+## Relevant references not cited as yet
+http://dx.doi.org/10.1016/j.ecolind.2011.10.008
+
+## Core microbiome function
+```{r functions}
 
 # core microbiome function
 # finds the core microbiome with various options
@@ -32,8 +46,8 @@ tidy_phyloseq <- function(my_phyloseq){
 
 # Defaults are set to model the typical scenario where simple abundance across the whole
 # experiment are used to identify numerically dominant OTUs
-# returns a list of OTUs
-core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),verbose=0){
+# returns a phyloseq object containing only the OTUs matching the criteria set
+core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),verbose=0,r="physeq"){
   core_otus_glom <- c()
   for (rank in ranks) {
     # agglomerate to the taxonomic rank being searched
@@ -70,8 +84,26 @@ core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),
     if(verbose>1)  print(paste(rank,"level search found",length(glom_rank_candidates),"taxa above",method,"abundance of",threshold))
   }
   if(verbose>0) print(paste("Search found", length(core_otus_glom),"unique OTUs"))
-  return(unique(core_otus_glom))
+  core_otus <- unique(core_otus_glom)
+  return(prune_taxa(core_otus,expt) )
 }
+```
+
+
+```{r other_functions, echo=FALSE}
+
+library("phyloseq"); library("grid");
+
+tidy_phyloseq <- function(my_phyloseq){
+  # set ranks. 
+  colnames(tax_table(my_phyloseq)) = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+  # fix taxa names
+  tax_table(my_phyloseq)[,colnames(tax_table(my_phyloseq))] <- gsub(tax_table(my_phyloseq)[,colnames(tax_table(my_phyloseq))],pattern="[a-z]__",replacement="")
+  # If NA in phylum position of taxonomy table then change it to "Unidentified"
+  tax_table(my_phyloseq)[tax_table(my_phyloseq)[,"Phylum"]==NA,"Phylum"] <- "Unidentified"
+  return(my_phyloseq)
+}
+
 
 # core compare function
 # Input 2 phyloseq objects which have been pruned to contain a 'core microbiome'
@@ -150,14 +182,10 @@ for ( i in 1:length(expts) ) {
   
   # Identify core OTUs using different options
   # then make a pruned phyloseq object for each list
-  species_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=c("Species"))
-  expt.species_mean <- prune_taxa(species_mean,expt)
-  all_ranks_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=rank_names(expt))
-  expt.all_ranks_mean <- prune_taxa(all_ranks_mean,expt)
-  species_max <- core_microbiome(expt,threshold=2,method="max",ranks=c("Species"))
-  expt.species_max <- prune_taxa(species_max,expt)
-  all_ranks_max <- core_microbiome(expt,threshold=2,method="max",ranks=rank_names(expt))
-  expt.all_ranks_max <- prune_taxa(all_ranks_max,expt)
+  expt.species_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=c("Species"))
+  expt.all_ranks_mean <- core_microbiome(expt,threshold=2,method="mean",ranks=rank_names(expt))
+  expt.species_max <- core_microbiome(expt,threshold=2,method="max",ranks=c("Species"))
+  expt.all_ranks_max <- core_microbiome(expt,threshold=2,method="max",ranks=rank_names(expt))
   
   # Examine the differently defined core microbiomes
   expt_list <- c(expt.species_mean,expt.all_ranks_mean,expt.species_max,expt.all_ranks_max)
