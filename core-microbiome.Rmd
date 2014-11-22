@@ -37,6 +37,7 @@ http://dx.doi.org/10.1016/j.ecolind.2011.10.008
 # threshold: the abundance below which OTUs are not regarded as being "core taxa"
 # method: "max" or "mean" - define whether to calculate the threshold for the max or mean
 # ranks: vector of taxonomic ranks at which to search for the core taxa
+# group: factor on which to merge samples before applying threshold criteria. 
 
 # Note.
 # max and mean are calculated for the whole OTU table per row
@@ -44,11 +45,28 @@ http://dx.doi.org/10.1016/j.ecolind.2011.10.008
 # mean gives the overall abundant OTUs
 # max will include any OTU which is abundant any 1 sample, so it is really like a sample-wise search
 
-# Defaults are set to model the typical scenario where simple abundance across the whole
-# experiment are used to identify numerically dominant OTUs
 # returns a phyloseq object containing only the OTUs matching the criteria set
-core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),verbose=0,r="physeq"){
+core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),group="",verbose=0){
   core_otus_glom <- c()
+  physeq.original <- physeq
+  if(group!="") {
+    # note that grouping will sum the counts
+    # but for the threshold to be applied correctly we need to
+    # use the mean for the group.
+    # the mean is worked out and applied below.
+    # I'm sure this can be done in a better way
+    # HAS NOT BEEN TESTED ON OBJECTS WHERE THE GROUP FREQUENCY VARIES
+    sample_data(physeq)$group_frequency <- NA
+    for(n in 1:nrow(sample_data(physeq))) {
+      sample_data(physeq)$group_frequency <- sum(get_variable(physeq, group)==get_variable(physeq, group)[n])
+    }
+    otu_table(physeq) <- otu_table(physeq)/sample_data(physeq)$group_frequency
+    physeq <- merge_samples(x=physeq,group=group)
+    # I don't know why the above transposes the OTU table. Turn it back:
+    otu_table(physeq) <- t(otu_table(physeq))
+    
+    # transform_sample_counts(physeq, function(x) x/sample_data(physeq)$group_frequency)
+  }
   for (rank in ranks) {
     # agglomerate to the taxonomic rank being searched
     # but only do this if we are not at the bottom rank already
@@ -64,31 +82,33 @@ core_microbiome <- function(physeq,threshold=2,method="mean",ranks=c("Species"),
     # make a list of the taxa meeting the abundance criteria
     glom_rank_candidates <- row.names(glom_otus[glom_otus$stat >= threshold,])
     # identify the taxonomy of the candidates
-    glom_rank_taxonomy <- tax_table(physeq.glom)[glom_rank_candidates,rank]
-    # identify the most abundant OTU within the identified taxonomic group, and add it to the list
-    # tax_glom does not always pick the most abundant OTU in the classification
-    # Therefore need to specifically check for the most abundant OTU 
-    # should only do this if we are not working at the lowest rank in the phyloseq object
-    if(rank!=rank_names(physeq)[length(rank_names(physeq))]) {
-      for (candidate in glom_rank_taxonomy) {
-        OTUs_in_taxonomic_group <- tax_table(physeq)[,rank] == as.character(candidate)
-        most_abundant_OTU <- names(which.max(taxa_sums(physeq)[as.vector(OTUs_in_taxonomic_group)]))
-        core_otus_glom <- c(core_otus_glom,most_abundant_OTU)
+    if(length(glom_rank_candidates)>0) {
+      glom_rank_taxonomy <- tax_table(physeq.glom)[glom_rank_candidates,rank]
+      
+      # identify the most abundant OTU within the identified taxonomic group, and add it to the list
+      # tax_glom does not always pick the most abundant OTU in the classification
+      # Therefore need to specifically check for the most abundant OTU 
+      # should only do this if we are not working at the lowest rank in the phyloseq object
+      if(rank!=rank_names(physeq)[length(rank_names(physeq))]) {
+        for (candidate in glom_rank_taxonomy) {
+          OTUs_in_taxonomic_group <- tax_table(physeq)[,rank] == as.character(candidate)
+          most_abundant_OTU <- names(which.max(taxa_sums(physeq)[as.vector(OTUs_in_taxonomic_group)]))
+          core_otus_glom <- c(core_otus_glom,most_abundant_OTU)
+        }
+      } 
+      else {
+        # at OTU level we don't need to search for the most abundant one - we want them all
+        core_otus_glom <- c(core_otus_glom,glom_rank_candidates)  
       }
-    } 
-    else {
-      # at OTU level we don't need to search for the most abundant one - we want them all
-      core_otus_glom <- c(core_otus_glom,glom_rank_candidates)  
     }
-    
     if(verbose>1)  print(paste(rank,"level search found",length(glom_rank_candidates),"taxa above",method,"abundance of",threshold))
   }
   if(verbose>0) print(paste("Search found", length(core_otus_glom),"unique OTUs"))
   core_otus <- unique(core_otus_glom)
-  return(prune_taxa(core_otus,expt) )
+  return(prune_taxa(core_otus,physeq.original) )
 }
-```
 
+```
 
 ```{r other_functions, echo=FALSE}
 
