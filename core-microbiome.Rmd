@@ -3,7 +3,7 @@ title: "Core Microbiome"
 output: html_document
 ---
 
-Identifying a core microbiome is useful for simplifying microbiome, for example to facilitate description and analyses, or as a quality control measure rejecting rarer sequences. There is not a single established concept or method which defines the core microbiome (we do not suggest that there should be), but [Hu et al (2013)](http://dx.doi.org/10.1371/journal.pone.0056343) recently outlined some of the commonly used methods. These are most often based on OTU _detection_ in all samples or OTU detection in a certain percentage of samples. Detection based criteria are not very well suited to microbiome analyses where sequencing depth, and thus detection potential, varies between samples and studies. 
+Identifying a core microbiome is useful for simplifying microbiome data, for example to facilitate description and analyses, or as a quality control measure rejecting rarer sequences. There is not a single established concept or method which defines the core microbiome (we do not suggest that there should be), but [Hu et al (2013)](http://dx.doi.org/10.1371/journal.pone.0056343) recently outlined some of the commonly used methods. These are most often based on OTU _detection_ in all samples or OTU detection in a certain percentage of samples. Detection based criteria are not very well suited to microbiome analyses where sequencing depth, and thus detection potential, varies between samples and studies. 
 
 ## Abundance threshold
 An alternative method is to use an abundance threshold rather than presence or absence. This approach mostly avoids the problem of detection being affected by sequencing depth, because the detection threshold can be set much higher than 1 sequence per sample for typical thresholds, which are likely to be in the range of 0.1 - 5 % (estimate - need to check real examples in literature). When applying an abundance threshold to identify the 'core microbiome', it is important to consider whether the threshold is applied to the whole sequencing library, to specific experimental factors, or individually to every sample. This choice will make a big difference to the identified core OTUs:
@@ -187,13 +187,24 @@ kb.rel <- transform_sample_counts(kb, function(x) 100*x/(sum(x)))
 hb.rel <- transform_sample_counts(hb, function(x) 100*x/(sum(x)))
 hf.rel <- transform_sample_counts(hf, function(x) 100*x/(sum(x)))
 
+# Make a merged object for bacteria
+( all.bac.rel.original <- merge_phyloseq(hb.rel,kb.rel) )
+
+# When merging initially the number of taxa will be the sum of the merged objects
+# So tax_glom can potentially finish the merging process to combine similar OTUS
+# however care needs to be taken because missing taxonomic information can cause
+# different OTUs to be merged together
+# Note the phyloseq documentation for tax_glom
+
+( all.bac.rel <- tax_glom(all.bac.rel.original, "Species",NArm = FALSE) )
+
 ```
 
 
 ```{r core_OTU, fig.width=18, fig.height=15, results='asis'}
 
-expts <- c(kb.rel , hb.rel , hf.rel)
-studies <- c("dryland bacteria" , "peatland bacteria" , "peatland fungi")
+expts <- c(kb.rel , hb.rel, all.bac.rel , hf.rel)
+studies <- c("dryland bacteria" , "peatland bacteria" , "all_bacteria", "peatland fungi")
 
 for ( i in 1:length(expts) ) {
   expt <- expts[[i]]
